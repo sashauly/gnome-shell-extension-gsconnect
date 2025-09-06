@@ -4,6 +4,8 @@
 
 'use strict';
 
+importScripts('browser-polyfill.min.js');
+
 const _ABOUT = /^chrome:|^about:/;
 
 const _CONTEXTS = [
@@ -24,7 +26,6 @@ const _MUTE = [
     'The message port closed before a response was received.',
 ];
 
-
 /**
  * State of the extension.
  */
@@ -37,7 +38,6 @@ const State = {
 var reconnectDelay = 100;
 var reconnectTimer = null;
 var reconnectResetTimer = null;
-
 
 /**
  * Simple error logging function
@@ -59,14 +59,13 @@ function toggleAction(tab = null) {
     try {
         // Disable on "about:" pages
         if (_ABOUT.test(tab.url))
-            browser.browserAction.disable(tab.id);
+            browser.action.disable(tab.id);
         else
-            browser.browserAction.enable(tab.id);
+            browser.action.enable(tab.id);
     } catch {
-        browser.browserAction.disable();
+        browser.action.disable();
     }
 }
-
 
 /**
  * Send a message to the native-messaging-host
@@ -88,9 +87,8 @@ async function postMessage(message) {
     }
 }
 
-
 /**
- * Forward a message from the browserAction popup to the NMH
+ * Forward a message from the action popup to the NMH
  *
  * @param {object} message - A message from the NMH to forward
  * @param {*} sender - A message from the NMH to forward
@@ -104,9 +102,8 @@ async function onPopupMessage(message, sender) {
     }
 }
 
-
 /**
- * Forward a message from the NMH to the browserAction popup
+ * Forward a message from the NMH to the action popup
  *
  * @param {object} message - A message from the NMH to forward
  */
@@ -117,7 +114,6 @@ async function forwardPortMessage(message) {
         logError(e);
     }
 }
-
 
 /**
  * Context Menu Item Callback
@@ -140,7 +136,6 @@ async function onContextItem(info) {
         logError(e);
     }
 }
-
 
 /**
  * Populate the context menu
@@ -177,7 +172,6 @@ async function createContextMenu(tab) {
                         title: browser.i18n.getMessage('shareMessage'),
                         parentId: device.id,
                         contexts: _CONTEXTS,
-                        onclick: onContextItem,
                     });
 
                     await browser.contextMenus.create({
@@ -185,7 +179,6 @@ async function createContextMenu(tab) {
                         title: browser.i18n.getMessage('smsMessage'),
                         parentId: device.id,
                         contexts: _CONTEXTS,
-                        onclick: onContextItem,
                     });
                 } else {
                     let pluginAction, pluginName;
@@ -206,12 +199,11 @@ async function createContextMenu(tab) {
                         ),
                         parentId: 'contextMenuMultipleDevices',
                         contexts: _CONTEXTS,
-                        onclick: onContextItem,
                     });
                 }
             }
 
-        // One device; we'll create a top level menu
+            // One device; we'll create a top level menu
         } else {
             const device = State.devices[0];
 
@@ -227,7 +219,6 @@ async function createContextMenu(tab) {
                     title: browser.i18n.getMessage('shareMessage'),
                     parentId: device.id,
                     contexts: _CONTEXTS,
-                    onclick: onContextItem,
                 });
 
                 await browser.contextMenus.create({
@@ -235,7 +226,6 @@ async function createContextMenu(tab) {
                     title: browser.i18n.getMessage('smsMessage'),
                     parentId: device.id,
                     contexts: _CONTEXTS,
-                    onclick: onContextItem,
                 });
             } else {
                 let pluginAction, pluginName;
@@ -255,7 +245,6 @@ async function createContextMenu(tab) {
                         [device.name, pluginName]
                     ),
                     contexts: _CONTEXTS,
-                    onclick: onContextItem,
                 });
             }
         }
@@ -263,7 +252,6 @@ async function createContextMenu(tab) {
         logError(e);
     }
 }
-
 
 /**
  * Message Handling
@@ -283,7 +271,7 @@ async function onPortMessage(message) {
             else
                 State.devices = [];
 
-        // We're being sent a list of devices (so the NMH must be connected)
+            // We're being sent a list of devices (so the NMH must be connected)
         } else if (message.type === 'devices') {
             State.connected = true;
             State.devices = message.data;
@@ -304,7 +292,6 @@ async function onPortMessage(message) {
     }
 }
 
-
 /**
  * Callback for disconnection from the native-messaging-host
  */
@@ -312,8 +299,8 @@ async function onDisconnect() {
     try {
         State.connected = false;
         State.port = null;
-        browser.browserAction.setBadgeText({text: '\u26D4'});
-        browser.browserAction.setBadgeBackgroundColor({color: [198, 40, 40, 255]});
+        browser.action.setBadgeText({text: '\u26D4'});
+        browser.action.setBadgeBackgroundColor({color: [198, 40, 40, 255]});
         forwardPortMessage({type: 'connected', data: false});
 
         // Clear context menu
@@ -321,13 +308,13 @@ async function onDisconnect() {
 
         // Disconnected, cancel back-off reset
         if (typeof reconnectResetTimer === 'number') {
-            window.clearTimeout(reconnectResetTimer);
+            clearTimeout(reconnectResetTimer);
             reconnectResetTimer = null;
         }
 
-        // Don't queue more than one reconnect
+        // // Don't queue more than one reconnect
         if (typeof reconnectTimer === 'number') {
-            window.clearTimeout(reconnectTimer);
+            clearTimeout(reconnectTimer);
             reconnectTimer = null;
         }
 
@@ -338,13 +325,12 @@ async function onDisconnect() {
         }
 
         // Exponential back-off on reconnect
-        reconnectTimer = window.setTimeout(connect, reconnectDelay);
+        reconnectTimer = setTimeout(connect, reconnectDelay);
         reconnectDelay *= 2;
     } catch (e) {
         logError(e);
     }
 }
-
 
 /**
  * Start and/or connect to the native-messaging-host
@@ -354,11 +340,11 @@ async function connect() {
         State.port = browser.runtime.connectNative('org.gnome.shell.extensions.gsconnect');
 
         // Clear the badge and tell the popup we're disconnected
-        browser.browserAction.setBadgeText({text: ''});
-        browser.browserAction.setBadgeBackgroundColor({color: [0, 0, 0, 0]});
+        browser.action.setBadgeText({text: ''});
+        browser.action.setBadgeBackgroundColor({color: [0, 0, 0, 0]});
 
         // Reset the back-off delay if we stay connected
-        reconnectResetTimer = window.setTimeout(() => {
+        reconnectResetTimer = setTimeout(() => {
             reconnectDelay = 100;
         }, reconnectDelay * 0.9);
 
@@ -371,11 +357,10 @@ async function connect() {
     }
 }
 
-
-// Forward messages from the browserAction popup
+// Forward messages from the action popup
 browser.runtime.onMessage.addListener(onPopupMessage);
 
-// Keep browserAction up to date
+// Keep action up to date
 browser.tabs.onActivated.addListener((info) => {
     browser.tabs.get(info.tabId).then(toggleAction);
 });
@@ -395,9 +380,8 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         createContextMenu(tab);
 });
 
-
 /**
- * Startup: set initial state of the browserAction and try to connect
+ * Startup: set initial state of the action and try to connect
  */
 toggleAction();
 connect();
