@@ -5,48 +5,61 @@
  */
 
 :root {
-    --primary-color: #202124;
-    --secondary-color: #5f6368;
-    --divider-color: #e8eaed;
-    --background-color: #fff;
-    --hover-bg-color: #f1f3f4;
-    --hover-bg: #e5e5e4;
-    --active-bg: #e5e5e4;
+    /* Adwaita Light Theme Colors */
+    --color-text-primary: #2e3436; /* Text on a light background */
+    --color-text-secondary: #5c5c5c; /* Dimmed text, placeholders */
+    --color-background-primary: #fafafa; /* Default window background */
+    --color-background-hover: #e5e5e4;
+    --color-background-button-hover: #dcdcdc; /* A slightly different gray for buttons */
+    --color-background-active: #dcdcdc; /* A slightly darker gray for active state */
+    --color-divider: rgba(0, 0, 0, 0.07); /* subtle separator */
+    --color-accent: #3584e4; /* Default blue accent color */
 
+    /* Spacing */
     --spacing-xs: 0.25rem;
     --spacing-sm: 0.5rem;
     --spacing-md: 0.8rem;
+
+    /* Other */
     --border-radius: 8px;
+    --font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+        Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue',
+        sans-serif;
 }
 
-/* === Dark Theme === */
 @media (prefers-color-scheme: dark) {
     :root {
-        --primary-color: #e8eaed;
-        --secondary-color: #bdc1c6;
-        --divider-color: #5f6368;
-        --background-color: #202124;
-        --hover-bg-color: #3c4043;
+        /* Adwaita Dark Theme Colors */
+        --color-text-primary: #e8e8e8;
+        --color-text-secondary: #d1d1d1;
+        --color-background-primary: #242424;
+        --color-background-hover: #303030;
+        --color-background-button-hover: #404040; /* A different gray for buttons */
+        --color-background-active: #404040;
+        --color-divider: rgba(255, 255, 255, 0.07);
     }
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
 }
 
 body {
     margin: 0;
-    background-color: var(--background-color);
+    background-color: var(--color-background-primary);
     padding: 0;
-    width: 320px;
-    color: var(--primary-color);
+    color: var(--color-text-primary);
     font-size: 14px;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
-        Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue',
-        sans-serif;
+    font-family: var(--font-family);
 }
 
 #popup {
     display: flex;
     flex-direction: column;
-    background-color: var(--background-color);
-    padding: 0;
+    background-color: var(--color-background-primary);
+    width: 320px;
 }
 
 #popup-header {
@@ -57,6 +70,19 @@ body {
     padding-bottom: var(--spacing-sm);
 }
 
+#popup-content {
+    flex-grow: 1;
+    padding: var(--spacing-sm) 0;
+}
+
+#popup-footer {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    border-top: 1px solid var(--color-divider);
+    padding: var(--spacing-md);
+}
+
 .header-text {
     display: flex;
     flex-direction: column;
@@ -64,19 +90,14 @@ body {
 }
 
 .header-title {
-    color: var(--primary-color);
+    color: var(--color-text-primary);
     font-weight: 500;
     font-size: 1.1rem;
 }
 
 .header-subtitle {
-    color: var(--secondary-color);
+    color: var(--color-text-secondary);
     font-size: 0.9rem;
-}
-
-#popup-content {
-    flex-grow: 1;
-    padding: var(--spacing-sm) 0;
 }
 
 .device-list {
@@ -94,7 +115,7 @@ body {
 }
 
 .device:hover {
-    background-color: var(--hover-bg-color);
+    background-color: var(--color-background-hover);
 }
 
 .device-main-line {
@@ -139,18 +160,11 @@ body {
 }
 
 .plugin-button:hover {
-    background-color: var(--hover-bg);
+    background-color: var(--color-background-button-hover);
 }
 
 .plugin-button:active {
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
-    background-color: var(--active-bg);
-}
-
-.plugin-button.disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    pointer-events: none;
+    background-color: var(--color-background-active);
 }
 
 .plugin-button img {
@@ -170,16 +184,8 @@ body {
     text-align: center;
 }
 
-#popup-footer {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    border-top: 1px solid var(--divider-color);
-    padding: var(--spacing-md);
-}
-
 .footer-link {
-    color: #3584e4;
+    color: var(--color-accent);
     font-weight: 500;
     text-decoration: none;
 }
