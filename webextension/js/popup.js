@@ -7,7 +7,6 @@
 
 var CONNECTED = false;
 var DEVICES = [];
-// eslint-disable-next-line no-unused-vars
 var TARGET_URL = null;
 
 
@@ -82,7 +81,7 @@ function getDeviceElement(device) {
         shareButton.title = browser.i18n.getMessage('shareMessage');
         shareButton.addEventListener(
             'click',
-            () => sendUrl(device.id, 'share', URL)
+            () => sendUrl(device.id, 'share', TARGET_URL)
         );
         deviceElement.appendChild(shareButton);
     }
@@ -94,7 +93,7 @@ function getDeviceElement(device) {
         telephonyButton.title = browser.i18n.getMessage('smsMessage');
         telephonyButton.addEventListener(
             'click',
-            () => sendUrl(device.id, 'telephony', URL)
+            () => sendUrl(device.id, 'telephony', TARGET_URL)
         );
         deviceElement.appendChild(telephonyButton);
     }
@@ -146,7 +145,6 @@ function onPortMessage(message, sender) {
     try {
         // console.log(`WebExtension-popup RECV: ${JSON.stringify(message)}`);
 
-        if (sender.url.includes('/background.html')) {
             if (message.type === 'connected') {
                 CONNECTED = message.data;
             } else if (message.type === 'devices') {
@@ -155,7 +153,6 @@ function onPortMessage(message, sender) {
             }
 
             setPopup();
-        }
     } catch (e) {
         logError(e);
     }
