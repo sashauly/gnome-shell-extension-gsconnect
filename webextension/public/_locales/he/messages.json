@@ -4,11 +4,11 @@
         "description": "The extension name"
     },
     "extensionDescription": {
-        "message": "Jaa linkkejä GSConnectin avulla suoraan selaimeen tai tekstiviestillä.",
+        "message": "שיתוף קישורים עם GSConnect, ישירות לדפדפן או על ידי מסרון SMS.",
         "description": "The extension description"
     },
     "contextMenuMultipleDevices": {
-        "message": "Lähetä mobiililaitteeseen",
+        "message": "שליחה למכשיר נייד",
         "description": "Top-level Context Menu label when multiple devices are available"
     },
     "contextMenuSinglePlugin": {
@@ -26,19 +26,19 @@
         }
     },
     "popupMenuDisconnected": {
-        "message": "Palvelu ei ole käytettävissä",
+        "message": "שרת לא זמין",
         "description": "Popup Menu label when disconnected from the GNOME Shell extension"
     },
     "popupMenuNoDevices": {
-        "message": "Laitetta Ei Löytynyt",
+        "message": "לא נמצאו מכשירים",
         "description": "Popup Menu label when no devices are connected or have supported plugins enabled"
     },
     "shareMessage": {
-        "message": "Avaa Selaimessa",
+        "message": "פתיחה בדפדפן",
         "description": "Context Menu label for opening a link in the device's web browser"
     },
     "smsMessage": {
-        "message": "Lähetä tekstiviestillä",
+        "message": "שליחת מסרון SMS",
         "description": "Context Menu label for sharing a link in an SMS message"
     }
 }
