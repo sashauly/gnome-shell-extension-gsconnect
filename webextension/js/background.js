@@ -4,388 +4,274 @@
 
 'use strict';
 
-importScripts('browser-polyfill.min.js');
+import browser from 'webextension-polyfill';
 
 const APPLICATION_ID = 'org.gnome.shell.extensions.gsconnect';
-const _ABOUT = /^chrome:|^about:/;
 
-/** @type {browser.Menus.ContextType[]} */
-const _CONTEXTS = [
+/**
+ * All browser context types supported by the extension's context menu.
+ * @type {browser.Menus.ContextType[]}
+ */
+const CONTEXT_TYPES = [
+    // 'all',
     'audio',
-    'page',
+    // 'browser_action',
+    // 'editable',
     'frame',
-    'link',
     'image',
-    // FIREFOX-ONLY: mkwebext.sh will automatically remove this
-    'tab',
+    'link',
+    'page',
+    // 'page_action',
+    // 'selection',
     'video',
 ];
 
-// Suppress errors caused by Mozilla polyfill
-// TODO: not sure if these are relevant anymore
-const _MUTE = [
-    'Could not establish connection. Receiving end does not exist.',
-    'The message port closed before a response was received.',
+const SPECIAL_PROTOCOLS = [
+    'about:',
+    'chrome:',
+    'chrome-extension:',
+    'edge:',
+    'file:',
+    'moz-extension:',
 ];
 
-/**
- * State of the extension.
- */
-const State = {
-    connected: false,
-    devices: [],
-    port: null,
-};
+let nmhPort = null;
 
-var reconnectDelay = 100;
-var reconnectTimer = null;
-var reconnectResetTimer = null;
+let updateContextMenuTimeout = null;
 
 /**
- * Simple error logging function
- * @param {Error} error - A caught exception
+ * Establishes a connection to the Native Messaging Host.
+ * Disconnects any existing port before connecting.
  */
-function logError(error) {
-    if (!_MUTE.includes(error.message)) {
-        console.error(error.message);
-    }
-}
-
-/**
- * Callback for activation of the extension toolbar icon
- * @param {browser.Tabs.Tab} tab - the current tab
- */
-function toggleAction(tab = null) {
+function connectToNMH() {
     try {
-        // Disable on "about:" pages
-        if (_ABOUT.test(tab.url)) {
-            browser.action.disable(tab.id);
-        } else {
-            browser.action.enable(tab.id);
-        }
-    } catch {
-        browser.action.disable();
-    }
-}
-
-/**
- * Send a message to the native-messaging-host
- * @param {object} message - The message to forward
- */
-async function postMessage(message) {
-    try {
-        // console.log(`WebExtension SEND: ${JSON.stringify(message)}`);
-
-        if (!State.port || !message || !message.type) {
-            console.warn('Missing message parameters');
-            return;
+        if (nmhPort) {
+            nmhPort.disconnect();
         }
 
-        await State.port.postMessage(message);
-    } catch (e) {
-        logError(e);
+        nmhPort = browser.runtime.connectNative(APPLICATION_ID);
+
+        nmhPort.onDisconnect.addListener(onNMHDisconnect);
+        nmhPort.onMessage.addListener(handleNMHMessage);
+    } catch (error) {
+        console.error('Failed to connect to NMH.', error, 'connectToNMH');
+        onNMHDisconnect();
     }
 }
 
 /**
- * Forward a message from the action popup to the NMH
- * @param {object} message - A message from the NMH to forward
- * @param {*} sender - A message from the NMH to forward
+ * Sends a message to the Native Messaging Host.
+ * @param {object} message - The message to be sent.
+ * @returns {boolean} - True if the message was sent, false otherwise.
  */
-async function onPopupMessage(message, sender) {
+function sendMessageToNMH(message) {
+    if (!nmhPort) {
+        console.error(
+            'NMH port is not connected. Message not sent.',
+            'sendMessageToNMH'
+        );
+        return false;
+    }
     try {
-        if (sender.url.includes('/popup.html')) {
-            await postMessage(message);
-        }
-    } catch (e) {
-        logError(e);
+        nmhPort.postMessage(message);
+
+        return true;
+    } catch (error) {
+        console.error(
+            'Failed to post message to NMH.',
+            error,
+            'sendMessageToNMH'
+        );
+        return false;
     }
 }
 
 /**
- * Forward a message from the NMH to the action popup
- * @param {object} message - A message from the NMH to forward
+ * @typedef {object} NMHMessage
+ * @property {string} type - The type of message.
+ * @property {object} data - The data of the message.
  */
-async function forwardPortMessage(message) {
-    try {
-        await browser.runtime.sendMessage(message);
-    } catch (e) {
-        logError(e);
-    }
-}
 
 /**
- * Context Menu Item Callback
- * @param {browser.Menus.OnClickData} info - Information about the item and context
+ * Handles incoming messages from the Native Messaging Host.
+ * @param {NMHMessage} message - The message received from the NMH.
  */
-async function onContextItem(info) {
-    try {
-        const [id, action] = info.menuItemId.toString().split(':');
-
-        await postMessage({
-            type: 'share',
-            data: {
-                device: id,
-                url:
-                    info.linkUrl ||
-                    info.srcUrl ||
-                    info.frameUrl ||
-                    info.pageUrl,
-                action: action,
-            },
-        });
-    } catch (e) {
-        logError(e);
+async function handleNMHMessage(message) {
+    if (!message || typeof message.type !== 'string') {
+        console.error('Invalid message received from NMH.', 'handleNMHMessage');
+        return;
     }
-}
 
-/**
- * Populate the context menu
- * @param {browser.Tabs.Tab} tab - The current tab
- */
-async function createContextMenu(tab) {
-    try {
-        // Clear context menu
-        await browser.contextMenus.removeAll();
-
-        // Bail on "about:" page or no devices
-        if (_ABOUT.test(tab.url) || State.devices.length === 0) {
-            return;
-        }
-
-        // Multiple devices; we'll have at least one submenu level
-        if (State.devices.length > 1) {
-            await browser.contextMenus.create({
-                id: 'contextMenuMultipleDevices',
-                title: browser.i18n.getMessage('contextMenuMultipleDevices'),
-                contexts: _CONTEXTS,
+    switch (message.type) {
+        case 'connected':
+            if (message.data === true) {
+                sendMessageToNMH({ type: 'devices' });
+            }
+            break;
+        case 'devices':
+            await browser.storage.local.set({
+                devices: message.data,
+                connected: true,
             });
+            updateContextMenu();
+            break;
+        default:
+            console.warn(
+                `Unknown message type received: ${message.type}`,
+                'handleNMHMessage'
+            );
+    }
+}
 
-            for (const device of State.devices) {
-                if (device.share && device.telephony) {
-                    await browser.contextMenus.create({
-                        id: device.id,
-                        title: device.name,
-                        parentId: 'contextMenuMultipleDevices',
-                    });
+/**
+ * Handles disconnection from the Native Messaging Host.
+ */
+function onNMHDisconnect() {
+    nmhPort = null;
+    browser.storage.local.set({ devices: [], connected: false });
+}
 
-                    await browser.contextMenus.create({
-                        id: `${device.id}:share`,
-                        title: browser.i18n.getMessage('shareMessage'),
-                        parentId: device.id,
-                        contexts: _CONTEXTS,
-                    });
+/**
+ * Updates the browser's context menu after a short delay to debounce multiple calls.
+ * @param {number} delay - The delay in milliseconds before updating the menu.
+ */
+function updateContextMenu(delay = 250) {
+    clearTimeout(updateContextMenuTimeout);
+    updateContextMenuTimeout = setTimeout(async () => {
+        try {
+            await browser.contextMenus.removeAll();
+            const tabs = await browser.tabs.query({
+                active: true,
+                currentWindow: true,
+            });
+            const currentTabUrl = tabs[0]?.url;
 
-                    await browser.contextMenus.create({
-                        id: `${device.id}:telephony`,
-                        title: browser.i18n.getMessage('smsMessage'),
-                        parentId: device.id,
-                        contexts: _CONTEXTS,
-                    });
-                } else {
-                    let pluginAction, pluginName;
+            const isSpecialUrl = SPECIAL_PROTOCOLS.some(
+                (p) => currentTabUrl && currentTabUrl.startsWith(p)
+            );
 
-                    if (device.share) {
-                        pluginAction = 'share';
-                        pluginName = browser.i18n.getMessage('shareMessage');
-                    } else {
-                        pluginAction = 'telephony';
-                        pluginName = browser.i18n.getMessage('smsMessage');
-                    }
+            if (!isSpecialUrl) {
+                await browser.contextMenus.create({
+                    id: 'openPopup',
+                    // TODO: add i18n
+                    title: 'Send with GSConnect',
+                    contexts: CONTEXT_TYPES,
+                });
+            }
+        } catch (error) {
+            console.error('Failed to update context menu:', error);
+        }
+    }, delay);
+}
 
-                    await browser.contextMenus.create({
-                        id: `${device.id}:${pluginAction}`,
-                        title: browser.i18n.getMessage(
-                            'contextMenuSinglePlugin',
-                            [device.name, pluginName]
-                        ),
-                        parentId: 'contextMenuMultipleDevices',
-                        contexts: _CONTEXTS,
-                    });
+/**
+ * Updates the extension icon's enabled/disabled state for a given tab.
+ * @param {number} tabId - The ID of the tab.
+ * @param {string} url - The URL of the tab.
+ */
+function updateIconState(tabId, url) {
+    const isSpecialUrl = SPECIAL_PROTOCOLS.some(
+        (p) => url && url.startsWith(p)
+    );
+
+    if (isSpecialUrl) {
+        // HACK: Firefox doesn't have an action API yet
+        (browser.action ?? browser.browserAction).disable(tabId);
+    } else {
+        (browser.action ?? browser.browserAction).enable(tabId);
+    }
+}
+
+/**
+ * Handles clicks on the context menu.
+ * @param {browser.Menus.OnClickData} info - Information about the clicked menu item.
+ */
+function handleContextMenuClick(info) {
+    if (info.menuItemId === 'openPopup') {
+        // HACK: Firefox doesn't have an action API yet
+        (browser.action ?? browser.browserAction).openPopup();
+    }
+}
+
+/**
+ * Handles messages received from the extension's popup or other parts.
+ * @param {object} message - The message received.
+ * @param {browser.Runtime.MessageSender} sender - The sender of the message.
+ */
+async function handleRuntimeMessage(message, sender) {
+    console.log(
+        'Received message:',
+        message,
+        'from:',
+        sender,
+        'handleRuntimeMessage'
+    );
+
+    if (typeof message !== 'object' || message === null) {
+        console.warn('Received invalid message.', 'handleRuntimeMessage');
+        return;
+    }
+
+    switch (message.type) {
+        case 'share':
+            if (sender.tab) {
+                console.warn(
+                    "Received a 'share' message from a tab. Ignoring.",
+                    'handleRuntimeMessage'
+                );
+            } else {
+                const sent = sendMessageToNMH(message);
+                if (!sent) {
+                    console.error(
+                        "Failed to send 'share' message to NMH.",
+                        'handleRuntimeMessage'
+                    );
                 }
             }
-
-            // One device; we'll create a top level menu
-        } else {
-            const device = State.devices[0];
-
-            if (device.share && device.telephony) {
-                await browser.contextMenus.create({
-                    id: device.id,
-                    title: device.name,
-                    contexts: _CONTEXTS,
-                });
-
-                await browser.contextMenus.create({
-                    id: `${device.id}:share`,
-                    title: browser.i18n.getMessage('shareMessage'),
-                    parentId: device.id,
-                    contexts: _CONTEXTS,
-                });
-
-                await browser.contextMenus.create({
-                    id: `${device.id}:telephony`,
-                    title: browser.i18n.getMessage('smsMessage'),
-                    parentId: device.id,
-                    contexts: _CONTEXTS,
-                });
-            } else {
-                let pluginAction, pluginName;
-
-                if (device.share) {
-                    pluginAction = 'share';
-                    pluginName = browser.i18n.getMessage('shareMessage');
-                } else {
-                    pluginAction = 'telephony';
-                    pluginName = browser.i18n.getMessage('smsMessage');
-                }
-
-                await browser.contextMenus.create({
-                    id: `${device.id}:${pluginAction}`,
-                    title: browser.i18n.getMessage('contextMenuSinglePlugin', [
-                        device.name,
-                        pluginName,
-                    ]),
-                    contexts: _CONTEXTS,
-                });
-            }
-        }
-    } catch (e) {
-        logError(e);
+            break;
+        default:
+            console.warn(
+                `Received unknown message type: ${message.type}`,
+                'handleRuntimeMessage'
+            );
     }
 }
 
 /**
- * Message Handling
- * @param {object} message - A message received from the NMH
+ * Initializes the extension's state (icon and context menu) on startup or install.
  */
-async function onPortMessage(message) {
-    try {
-        // console.log(`WebExtension RECV: ${JSON.stringify(message)}`);
+async function initializeState() {
+    connectToNMH();
 
-        // The native-messaging-host's connection to the service has changed
-        if (message.type === 'connected') {
-            State.connected = message.data;
-
-            if (State.connected) {
-                postMessage({ type: 'devices' });
-            } else {
-                State.devices = [];
-            }
-
-            // We're being sent a list of devices (so the NMH must be connected)
-        } else if (message.type === 'devices') {
-            State.connected = true;
-            State.devices = message.data;
-        }
-
-        // Forward the message to popup.html
-        forwardPortMessage(message);
-
-        //
-        const tabs = await browser.tabs.query({
-            active: true,
-            currentWindow: true,
-        });
-
-        createContextMenu(tabs[0]);
-    } catch (e) {
-        logError(e);
+    const tabs = await browser.tabs.query({
+        active: true,
+        currentWindow: true,
+    });
+    if (tabs[0]) {
+        updateIconState(tabs[0].id, tabs[0].url);
     }
 }
 
-/**
- * Callback for disconnection from the native-messaging-host
- */
-async function onDisconnect() {
-    try {
-        State.connected = false;
-        State.port = null;
-        browser.action.setBadgeText({ text: '\u26D4' });
-        browser.action.setBadgeBackgroundColor({ color: [198, 40, 40, 255] });
-        forwardPortMessage({ type: 'connected', data: false });
+// Handles extension installation or update and browser startup
+browser.runtime.onInstalled.addListener(initializeState);
+browser.runtime.onStartup.addListener(initializeState);
 
-        // Clear context menu
-        await browser.contextMenus.removeAll();
+// Handles messages from other extension components (e.g., popup)
+browser.runtime.onMessage.addListener(handleRuntimeMessage);
 
-        // Disconnected, cancel back-off reset
-        if (typeof reconnectResetTimer === 'number') {
-            clearTimeout(reconnectResetTimer);
-            reconnectResetTimer = null;
-        }
+// Handles context menu clicks
+browser.contextMenus.onClicked.addListener(handleContextMenuClick);
 
-        // // Don't queue more than one reconnect
-        if (typeof reconnectTimer === 'number') {
-            clearTimeout(reconnectTimer);
-            reconnectTimer = null;
-        }
-
-        // Log disconnection
-        if (browser.runtime.lastError) {
-            const message = browser.runtime.lastError.message;
-            console.warn(`Disconnected: ${message}`);
-        }
-
-        // Exponential back-off on reconnect
-        reconnectTimer = setTimeout(connect, reconnectDelay);
-        reconnectDelay *= 2;
-    } catch (e) {
-        logError(e);
-    }
-}
-
-/**
- * Start and/or connect to the native-messaging-host
- */
-async function connect() {
-    try {
-        State.port = browser.runtime.connectNative(APPLICATION_ID);
-
-        // Clear the badge and tell the popup we're disconnected
-        browser.action.setBadgeText({ text: '' });
-        browser.action.setBadgeBackgroundColor({ color: [0, 0, 0, 0] });
-
-        // Reset the back-off delay if we stay connected
-        reconnectResetTimer = setTimeout(() => {
-            reconnectDelay = 100;
-        }, reconnectDelay * 0.9);
-
-        // Start listening and request a list of available devices
-        State.port.onDisconnect.addListener(onDisconnect);
-        State.port.onMessage.addListener(onPortMessage);
-        await State.port.postMessage({ type: 'devices' });
-    } catch (e) {
-        logError(e);
-    }
-}
-
-// Forward messages from the action popup
-browser.runtime.onMessage.addListener(onPopupMessage);
-
-// Keep action up to date
-browser.tabs.onActivated.addListener((info) => {
-    browser.tabs.get(info.tabId).then(toggleAction);
+// Handles tab navigation and updates
+browser.tabs.onActivated.addListener(async (activeInfo) => {
+    const tab = await browser.tabs.get(activeInfo.tabId);
+    updateIconState(tab.id, tab.url);
+    updateContextMenu();
 });
 
-browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
     if (changeInfo.url) {
-        toggleAction(tab);
+        updateIconState(tabId, changeInfo.url);
+        updateContextMenu();
     }
 });
-
-// Keep contextMenu up to date
-browser.tabs.onActivated.addListener((info) => {
-    browser.tabs.get(info.tabId).then(createContextMenu);
-});
-
-browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.url) {
-        createContextMenu(tab);
-    }
-});
-
-/**
- * Startup: set initial state of the action and try to connect
- */
-toggleAction();
-connect();
