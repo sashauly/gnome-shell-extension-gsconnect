@@ -4,173 +4,236 @@
 
 'use strict';
 
-var CONNECTED = false;
-var DEVICES = [];
-var TARGET_URL = null;
+import browser from 'webextension-polyfill';
 
-// Suppress errors caused by Mozilla polyfill
-// TODO: not sure if these are relevant anymore
-const _MUTE = [
-    'Could not establish connection. Receiving end does not exist.',
-    'The message port closed before a response was received.',
+const popupContent = document.getElementById('popup-content');
+
+const SPECIAL_PROTOCOLS = [
+    'about:',
+    'chrome:',
+    'chrome-extension:',
+    'edge:',
+    'file:',
+    'moz-extension:',
 ];
 
 /**
- * Simple error logging function
- * @param {Error} error - A caught exception
+ * Checks if a given URL is a browser-specific special protocol.
+ * @param {string} url - The URL to check.
+ * @returns {boolean} True if the URL is a special protocol, false otherwise.
  */
-function logError(error) {
-    if (!_MUTE.includes(error.message)) {
-        console.error(error.message);
+function isSpecialUrl(url) {
+    if (!url) return true;
+    return SPECIAL_PROTOCOLS.some((protocol) => url.startsWith(protocol));
+}
+/**
+ * Renders the popup UI based on the current connection and device status.
+ * Fetches device and connection data from local storage and updates the DOM.
+ */
+async function renderPopupUI() {
+    popupContent.innerHTML = '';
+
+    const currentTab = await getCurrentTab();
+    if (!currentTab || isSpecialUrl(currentTab.url)) {
+        showStatusMessage('Sharing is not available on this page.');
+        return;
     }
+
+    const { devices, connected } = await browser.storage.local.get([
+        'devices',
+        'connected',
+    ]);
+
+    if (connected === false) {
+        showStatusMessage('GSConnect is not connected.');
+        return;
+    }
+
+    if (!Array.isArray(devices) || devices.length === 0) {
+        showStatusMessage('No devices found.');
+        return;
+    }
+
+    renderDeviceList(devices);
 }
 
 /**
- * Share a URL, either direct to the browser or by SMS
- * @param {string} device - The deviceId
- * @param {string} action - Currently either 'share' or 'telephony'
- * @param {string} url - The URL to share
+ * Renders a list of devices with action buttons.
+ * @param {object[]} devices - An array of device objects.
  */
-async function sendUrl(device, action, url) {
-    try {
-        window.close();
+function renderDeviceList(devices) {
+    const deviceList = document.createElement('ul');
+    deviceList.className = 'device-list';
 
-        await browser.runtime.sendMessage({
-            type: 'share',
-            data: {
-                device: device,
-                url: url,
-                action: action,
-            },
-        });
-    } catch (e) {
-        logError(e);
-    }
+    devices.forEach((device) => {
+        const deviceItem = createDeviceItem(device);
+        deviceList.appendChild(deviceItem);
+    });
+
+    popupContent.appendChild(deviceList);
 }
 
 /**
- * Create and return a device element for the popup menu
- * @param {object} device - A JSON object describing a connected device
- * @returns {HTMLElement} - A <div> element with icon, name and actions
+ * Creates a single list item element for a device.
+ * @param {object} device - The device object.
+ * @returns {HTMLLIElement} The created list item element.
  */
-function getDeviceElement(device) {
-    const deviceElement = document.createElement('div');
-    deviceElement.className = 'device';
+function createDeviceItem(device) {
+    const deviceItem = document.createElement('li');
+    deviceItem.className = 'device';
+
+    const mainLine = document.createElement('div');
+    mainLine.className = 'device-main-line';
 
     const deviceIcon = document.createElement('img');
     deviceIcon.className = 'device-icon';
     deviceIcon.src = `images/${device.type}.svg`;
-    deviceElement.appendChild(deviceIcon);
+    deviceIcon.alt = browser.i18n.getMessage('deviceIconAlt', device.type);
+    mainLine.appendChild(deviceIcon);
 
     const deviceName = document.createElement('span');
     deviceName.className = 'device-name';
     deviceName.textContent = device.name;
-    deviceElement.appendChild(deviceName);
+    mainLine.appendChild(deviceName);
+    deviceItem.appendChild(mainLine);
+
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.className = 'plugin-buttons';
 
     if (device.share) {
-        const shareButton = document.createElement('img');
-        shareButton.className = 'plugin-button';
-        shareButton.src = 'images/open-in-browser.svg';
-        shareButton.title = browser.i18n.getMessage('shareMessage');
-        shareButton.addEventListener('click', () =>
-            sendUrl(device.id, 'share', TARGET_URL)
+        buttonsContainer.appendChild(
+            createActionButton(
+                device.id,
+                'share',
+                browser.i18n.getMessage('shareMessage'),
+                'images/open-in-browser.svg'
+            )
         );
-        deviceElement.appendChild(shareButton);
     }
-
     if (device.telephony) {
-        const telephonyButton = document.createElement('img');
-        telephonyButton.className = 'plugin-button';
-        telephonyButton.src = 'images/message.svg';
-        telephonyButton.title = browser.i18n.getMessage('smsMessage');
-        telephonyButton.addEventListener('click', () =>
-            sendUrl(device.id, 'telephony', TARGET_URL)
+        buttonsContainer.appendChild(
+            createActionButton(
+                device.id,
+                'telephony',
+                browser.i18n.getMessage('smsMessage'),
+                'images/message.svg'
+            )
         );
-        deviceElement.appendChild(telephonyButton);
     }
 
-    return deviceElement;
+    deviceItem.appendChild(buttonsContainer);
+    return deviceItem;
 }
 
 /**
- * Populate the browserAction popup
+ * Creates a single action button for a device.
+ * @param {string} deviceId - The ID of the device.
+ * @param {string} action - The action type (e.g., 'share').
+ * @param {string} title - The button's tooltip text.
+ * @param {string} iconPath - The path to the button's icon image.
+ * @returns {HTMLButtonElement} The created button element.
  */
-function setPopup() {
-    const devNode = document.getElementById('popup');
+function createActionButton(deviceId, action, title, iconPath) {
+    const button = document.createElement('button');
+    button.className = 'plugin-button';
+    button.innerHTML = `<img src="${iconPath}" alt="${title}">`;
+    button.title = title;
+    button.addEventListener('click', () => handleActionClick(deviceId, action));
+    return button;
+}
 
-    while (devNode.hasChildNodes()) {
-        devNode.removeChild(devNode.lastChild);
-    }
+/**
+ * Displays a status message in the popup.
+ * @param {string} message - The message to display.
+ */
+function showStatusMessage(message) {
+    const messageContainer = document.createElement('div');
+    messageContainer.className = 'message-container';
+    messageContainer.textContent = message;
+    popupContent.appendChild(messageContainer);
+}
 
-    if (CONNECTED && DEVICES.length) {
-        for (const device of DEVICES) {
-            const deviceElement = getDeviceElement(device);
-            devNode.appendChild(deviceElement);
-        }
-
+/**
+ * Handles the click event for an action button.
+ * Validates the current tab URL and sends an action message to the background script.
+ * @param {string} deviceId - The ID of the device.
+ * @param {string} action - The action type.
+ */
+async function handleActionClick(deviceId, action) {
+    const currentTab = await getCurrentTab();
+    if (!currentTab) {
+        console.warn('Popup: No active tab found.', 'handleActionClick');
+        // TODO add i18n
+        showStatusMessage('Cannot determine the current page.');
         return;
     }
 
-    // Disconnected or no devices
-    const message = document.createElement('span');
-    message.className = 'popup-menu-message';
-    devNode.appendChild(message);
+    const currentTabUrl = currentTab.url;
+    if (isSpecialUrl(currentTabUrl)) {
+        console.warn(
+            `Popup: Cannot share from a special page: ${currentTabUrl}`,
+            'handleActionClick'
+        );
+        // TODO add i18n
+        showStatusMessage('Sharing is not available on this page.');
+        return;
+    }
 
-    // The native-messaging-host or service is disconnected
-    if (!CONNECTED) {
-        message.textContent = browser.i18n.getMessage('popupMenuDisconnected');
-    }
-    // There are no devices
-    else {
-        message.textContent = browser.i18n.getMessage('popupMenuNoDevices');
-    }
+    sendMessageToBackground(deviceId, action, currentTabUrl);
 }
 
 /**
- * Callback for receiving a message forwarded by background.js
- * @param {object} message - A JSON message object
- * @param {browser.Runtime.MessageSender} sender - The sender of the message.
+ * Sends a message to the background service worker.
+ * @param {string} deviceId - The device ID.
+ * @param {string} action - The action type.
+ * @param {string} url - The URL to share.
  */
-function onPortMessage(message, sender) {
+async function sendMessageToBackground(deviceId, action, url) {
     try {
-        // console.log(`WebExtension-popup RECV: ${JSON.stringify(message)}`);
-
-        if (message.type === 'connected') {
-            CONNECTED = message.data;
-        } else if (message.type === 'devices') {
-            CONNECTED = true;
-            DEVICES = message.data;
-        }
-
-        setPopup();
-    } catch (e) {
-        logError(e);
+        await browser.runtime.sendMessage({
+            type: 'share',
+            data: {
+                device: deviceId,
+                url: url,
+                action: action,
+            },
+        });
+    } catch (error) {
+        console.error(
+            'Popup: Error sending message to background.',
+            error,
+            'sendMessageToBackground'
+        );
+        alert(
+            'Failed to send message to the background service. Please try again.'
+        );
     }
+    window.close();
 }
 
 /**
- * Set the current URL and repopulate the popup, on-demand
+ * Queries for the active tab in the current window.
+ * @returns {Promise<browser.Tabs.Tab|null>} The active tab or null if not found.
  */
-async function onPopup() {
+async function getCurrentTab() {
     try {
         const tabs = await browser.tabs.query({
             active: true,
             currentWindow: true,
         });
-
-        if (tabs.length) {
-            TARGET_URL = tabs[0].url;
-        }
-
-        setPopup();
-        await browser.runtime.sendMessage({ type: 'devices' });
-    } catch (e) {
-        logError(e);
+        return tabs[0] || null;
+    } catch (error) {
+        console.error(
+            'Popup: Failed to query active tab.',
+            error,
+            'getCurrentTab'
+        );
+        return null;
     }
 }
 
-/**
- * Startup: listen for forwarded messages and populate the popup on-demand
- */
-browser.runtime.onMessage.addListener(onPortMessage);
-document.addEventListener('DOMContentLoaded', onPopup);
+browser.runtime.onMessage.addListener(() => {
+    renderPopupUI();
+});
+
+document.addEventListener('DOMContentLoaded', renderPopupUI);
