@@ -25,7 +25,6 @@ elif [ "${1}" == "chrome" ] || [ "${1}" == "firefox" ]; then
     mkdir ${1}
     mkdir ${1}/images
 
-    cp background.html ${1}/
     cp manifest.${1}.json ${1}/manifest.json
     cp popup.html ${1}/
     cp stylesheet.css ${1}/

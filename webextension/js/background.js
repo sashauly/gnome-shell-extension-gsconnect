@@ -6,8 +6,10 @@
 
 importScripts('browser-polyfill.min.js');
 
+const APPLICATION_ID = 'org.gnome.shell.extensions.gsconnect';
 const _ABOUT = /^chrome:|^about:/;
 
+/** @type {browser.Menus.ContextType[]} */
 const _CONTEXTS = [
     'audio',
     'page',
@@ -41,27 +43,26 @@ var reconnectResetTimer = null;
 
 /**
  * Simple error logging function
- *
  * @param {Error} error - A caught exception
  */
 function logError(error) {
-    if (!_MUTE.includes(error.message))
+    if (!_MUTE.includes(error.message)) {
         console.error(error.message);
+    }
 }
-
 
 /**
  * Callback for activation of the extension toolbar icon
- *
- * @param {browser.tabs.Tab} tab - the current tab
+ * @param {browser.Tabs.Tab} tab - the current tab
  */
 function toggleAction(tab = null) {
     try {
         // Disable on "about:" pages
-        if (_ABOUT.test(tab.url))
+        if (_ABOUT.test(tab.url)) {
             browser.action.disable(tab.id);
-        else
+        } else {
             browser.action.enable(tab.id);
+        }
     } catch {
         browser.action.disable();
     }
@@ -69,7 +70,6 @@ function toggleAction(tab = null) {
 
 /**
  * Send a message to the native-messaging-host
- *
  * @param {object} message - The message to forward
  */
 async function postMessage(message) {
@@ -89,14 +89,14 @@ async function postMessage(message) {
 
 /**
  * Forward a message from the action popup to the NMH
- *
  * @param {object} message - A message from the NMH to forward
  * @param {*} sender - A message from the NMH to forward
  */
 async function onPopupMessage(message, sender) {
     try {
-        if (sender.url.includes('/popup.html'))
+        if (sender.url.includes('/popup.html')) {
             await postMessage(message);
+        }
     } catch (e) {
         logError(e);
     }
@@ -104,7 +104,6 @@ async function onPopupMessage(message, sender) {
 
 /**
  * Forward a message from the NMH to the action popup
- *
  * @param {object} message - A message from the NMH to forward
  */
 async function forwardPortMessage(message) {
@@ -117,18 +116,21 @@ async function forwardPortMessage(message) {
 
 /**
  * Context Menu Item Callback
- *
- * @param {browser.menus.OnClickData} info - Information about the item and context
+ * @param {browser.Menus.OnClickData} info - Information about the item and context
  */
 async function onContextItem(info) {
     try {
-        const [id, action] = info.menuItemId.split(':');
+        const [id, action] = info.menuItemId.toString().split(':');
 
         await postMessage({
             type: 'share',
             data: {
                 device: id,
-                url: info.linkUrl || info.srcUrl || info.frameUrl || info.pageUrl,
+                url:
+                    info.linkUrl ||
+                    info.srcUrl ||
+                    info.frameUrl ||
+                    info.pageUrl,
                 action: action,
             },
         });
@@ -139,8 +141,7 @@ async function onContextItem(info) {
 
 /**
  * Populate the context menu
- *
- * @param {browser.tabs.Tab} tab - The current tab
+ * @param {browser.Tabs.Tab} tab - The current tab
  */
 async function createContextMenu(tab) {
     try {
@@ -148,8 +149,9 @@ async function createContextMenu(tab) {
         await browser.contextMenus.removeAll();
 
         // Bail on "about:" page or no devices
-        if (_ABOUT.test(tab.url) || State.devices.length === 0)
+        if (_ABOUT.test(tab.url) || State.devices.length === 0) {
             return;
+        }
 
         // Multiple devices; we'll have at least one submenu level
         if (State.devices.length > 1) {
@@ -240,10 +242,10 @@ async function createContextMenu(tab) {
 
                 await browser.contextMenus.create({
                     id: `${device.id}:${pluginAction}`,
-                    title: browser.i18n.getMessage(
-                        'contextMenuSinglePlugin',
-                        [device.name, pluginName]
-                    ),
+                    title: browser.i18n.getMessage('contextMenuSinglePlugin', [
+                        device.name,
+                        pluginName,
+                    ]),
                     contexts: _CONTEXTS,
                 });
             }
@@ -255,7 +257,6 @@ async function createContextMenu(tab) {
 
 /**
  * Message Handling
- *
  * @param {object} message - A message received from the NMH
  */
 async function onPortMessage(message) {
@@ -266,10 +267,11 @@ async function onPortMessage(message) {
         if (message.type === 'connected') {
             State.connected = message.data;
 
-            if (State.connected)
-                postMessage({type: 'devices'});
-            else
+            if (State.connected) {
+                postMessage({ type: 'devices' });
+            } else {
                 State.devices = [];
+            }
 
             // We're being sent a list of devices (so the NMH must be connected)
         } else if (message.type === 'devices') {
@@ -299,9 +301,9 @@ async function onDisconnect() {
     try {
         State.connected = false;
         State.port = null;
-        browser.action.setBadgeText({text: '\u26D4'});
-        browser.action.setBadgeBackgroundColor({color: [198, 40, 40, 255]});
-        forwardPortMessage({type: 'connected', data: false});
+        browser.action.setBadgeText({ text: '\u26D4' });
+        browser.action.setBadgeBackgroundColor({ color: [198, 40, 40, 255] });
+        forwardPortMessage({ type: 'connected', data: false });
 
         // Clear context menu
         await browser.contextMenus.removeAll();
@@ -337,11 +339,11 @@ async function onDisconnect() {
  */
 async function connect() {
     try {
-        State.port = browser.runtime.connectNative('org.gnome.shell.extensions.gsconnect');
+        State.port = browser.runtime.connectNative(APPLICATION_ID);
 
         // Clear the badge and tell the popup we're disconnected
-        browser.action.setBadgeText({text: ''});
-        browser.action.setBadgeBackgroundColor({color: [0, 0, 0, 0]});
+        browser.action.setBadgeText({ text: '' });
+        browser.action.setBadgeBackgroundColor({ color: [0, 0, 0, 0] });
 
         // Reset the back-off delay if we stay connected
         reconnectResetTimer = setTimeout(() => {
@@ -351,7 +353,7 @@ async function connect() {
         // Start listening and request a list of available devices
         State.port.onDisconnect.addListener(onDisconnect);
         State.port.onMessage.addListener(onPortMessage);
-        await State.port.postMessage({type: 'devices'});
+        await State.port.postMessage({ type: 'devices' });
     } catch (e) {
         logError(e);
     }
@@ -366,8 +368,9 @@ browser.tabs.onActivated.addListener((info) => {
 });
 
 browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.url)
+    if (changeInfo.url) {
         toggleAction(tab);
+    }
 });
 
 // Keep contextMenu up to date
@@ -376,8 +379,9 @@ browser.tabs.onActivated.addListener((info) => {
 });
 
 browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.url)
+    if (changeInfo.url) {
         createContextMenu(tab);
+    }
 });
 
 /**
