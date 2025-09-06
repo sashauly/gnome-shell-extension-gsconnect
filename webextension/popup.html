@@ -6,14 +6,30 @@ SPDX-License-Identifier: GPL-2.0-or-later
 
 <!DOCTYPE html>
 <html>
-  <head>
-    <link rel="stylesheet" href="stylesheet.css" />
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-  </head>
-  <body>
-    <div id="popup"/>
-    <script src="js/browser-polyfill.min.js"></script>
-    <script src="js/popup.js"></script>
-  </body>
+    <head>
+        <link rel="stylesheet" href="stylesheet.css" />
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    </head>
+    <body>
+        <div id="popup">
+            <div id="popup-header">
+                <div class="header-text">
+                    <span class="header-title">Send to your devices</span>
+                    <span class="header-subtitle">Choose a device.</span>
+                </div>
+            </div>
+            <div id="popup-content"></div>
+            <div id="popup-footer">
+                <a
+                    href="https://github.com/GSConnect/gnome-shell-extension-gsconnect"
+                    rel="noopener noreferrer"
+                    target="_blank"
+                    class="footer-link"
+                    >GSConnect</a
+                >
+            </div>
+        </div>
+        <script src="js/browser-polyfill.min.js"></script>
+        <script src="js/popup.js"></script>
+    </body>
 </html>
-
