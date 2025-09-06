@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "es6",
+    "checkJs": true,
+    "lib": [
+      "esnext",
+      "dom"
+    ],
+  },
+  "exclude": [
+    "node_modules",
+    ".cache",
+    ".vscode",
+    "dist",
+    "build"
+  ],
+  "include": [
+    "js/**/*.js",
+  ],
+  "typeAcquisition": {
+    "enable": true
+  }
+}
