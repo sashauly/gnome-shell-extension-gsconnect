@@ -57,7 +57,7 @@ JSON.load = function (gfile) {
 
 // Find the cwd, locale dir and po dir
 const cwd = Gio.File.new_for_path('.');
-const localedir = cwd.get_child('_locales');
+const localedir = cwd.get_child('public/_locales');
 const podir = cwd.get_parent().get_child('po');
 
 // Load the english translation as a template
