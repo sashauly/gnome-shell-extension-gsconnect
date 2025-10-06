@@ -1,106 +1,71 @@
 on:
   push:
     tags:
-      - "v[0-9]+.*" # More specific pattern for semantic versioning tags (e.g., v1, v1.0.0, v2.5)
+      - "v[0-9]+.*"
   workflow_dispatch:
 
 name: WebExtension Release
 
 jobs:
-  release: # Rename 'build' to 'release' for clarity on job purpose
+  release:
     name: Build and Upload Release Assets
     runs-on: ubuntu-latest
 
     permissions:
       contents: write
 
-    # Define variables in the job env for easier management and reuse
     env:
       WEBEXTENSION_DIR: ./webextension
-      TAG_VERSION: ${{ github.ref_name }} # Get just the tag name (e1.g., 'v1.0.0')
+      TAG_VERSION: ${{ github.ref_name }}
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4 # Use the latest version
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm" # Add caching for dependencies (efficiency boost)
+          cache: "npm"
           cache-dependency-path: ${{ env.WEBEXTENSION_DIR }}/package-lock.json
 
       - name: Install System Dependencies
-        # Combine commands and use recommended apt options for speed
+
         run: sudo apt-get update && sudo apt-get install -y gjs
 
       - name: Install Node Dependencies
-        run: npm ci # Use 'ci' instead of 'install' for CI environments (more reliable)
+        run: npm ci
         working-directory: ${{ env.WEBEXTENSION_DIR }}
 
       - name: Run Build and Pack Scripts
         run: npm run pack
         working-directory: ${{ env.WEBEXTENSION_DIR }}
 
-      # --- Release Creation and Asset Upload (Optimized) ---
-
       - name: Create GitHub Release
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          # FIX: Use the clean environment variable for the tag name
           tag_name: ${{ env.TAG_VERSION }}
           name: Release ${{ env.TAG_VERSION }}
           draft: false
           prerelease: false
-          # You can remove the 'token' input if you have the permissions: contents: write set
-          # token: ${{ secrets.GITHUB_TOKEN }}
+
           files: |
             ${{ env.WEBEXTENSION_DIR }}/gsconnect-chrome.zip
             ${{ env.WEBEXTENSION_DIR }}/gsconnect-firefox.zip
 
-      # Note: The ZIP uploads are now handled by softprops/action-gh-release (above).
-      # We no longer need the individual upload-release-asset steps for ZIPs.
-
-      # --- CRX Creation ---
-
-      # The CRX action needs the ZIP file path. Since we no longer use the upload-asset step,
-      # we reference the file's original location.
       - name: Create CRX file
-        id: create_crx # Add ID for potential future use
+        id: create_crx
         uses: cardinalby/webext-buildtools-chrome-crx-action@v2
         with:
-          zipFilePath: ${{ env.WEBEXTENSION_DIR }}/gsconnect-chrome.zip # Use direct path
-          crxFilePath: gsconnect-chrome-${{ env.TAG_VERSION }}.crx # Use specific filename
+          zipFilePath: ${{ env.WEBEXTENSION_DIR }}/gsconnect-chrome.zip
+          crxFilePath: gsconnect-chrome-${{ env.TAG_VERSION }}.crx
           privateKey: ${{ secrets.CRX_PRIVATE_KEY }}
 
       - name: Upload CRX Asset
-        uses: actions/upload-release-asset@v1
+        uses: softprops/action-gh-release@v2
+        with:
+          files: gsconnect-chrome-${{ env.TAG_VERSION }}.crx
+          overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: gsconnect-chrome-${{ env.TAG_VERSION }}.crx
-          asset_name: gsconnect-chrome-${{ env.TAG_VERSION }}.crx
-          asset_content_type: application/x-chrome-extension
-
-      # # --- XPI Creation and Upload (Based on previous conversation's best practice) ---
-
-      # - name: Create XPI file
-      #   id: create_xpi
-      #   uses: kewisch/action-web-ext@v1
-      #   with:
-      #     cmd: build
-      #     source: ${{ env.WEBEXTENSION_DIR }}
-      #     artifacts: ./xpi-output
-      #     filename: "firefox.xpi" # A simple name for the temp file
-
-      # - name: Upload XPI Asset
-      #   uses: actions/upload-release-asset@v1
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     upload_url: ${{ steps.create_release.outputs.upload_url }}
-      #     asset_path: ${{ steps.create_xpi.outputs.target }} # Use the exact file path from the action
-      #     asset_name: gsconnect-firefox-${{ env.TAG_VERSION }}.xpi # Use a clean name for the final asset
-      #     asset_content_type: application/x-xpinstall
