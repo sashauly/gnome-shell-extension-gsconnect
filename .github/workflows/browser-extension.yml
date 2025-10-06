@@ -68,7 +68,7 @@ jobs:
       - name: Create CRX file
         uses: cardinalby/webext-buildtools-chrome-crx-action@v2
         with:
-          zipFilePath: ${{ steps.upload-chrome-zip-asset.outputs.asset_path }}
+          zipFilePath: ${{ env.WEBEXTENSION_DIR }}/gsconnect-chrome.zip
           crxFilePath: gsconnect-chrome.crx
           privateKey: ${{ secrets.CRX_PRIVATE_KEY }}
 
