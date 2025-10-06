@@ -4,7 +4,7 @@ on:
       - "v[0-9]+.*"
   workflow_dispatch:
 
-name: WebExtension Release
+name: Hardcoded WebExtension Release (Proven Pattern)
 
 jobs:
   release:
@@ -14,58 +14,66 @@ jobs:
     permissions:
       contents: write
 
-    env:
-      WEBEXTENSION_DIR: ./webextension
-      TAG_VERSION: ${{ github.ref_name }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      # ------------------------------------------------------------------
+      # 1. Setup pnpm (Proven to work first)
+      # ------------------------------------------------------------------
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10 # Hardcoded to a recent major version like you have
+          run_install: false
+
+      # ------------------------------------------------------------------
+      # 2. Setup Node.js and Caching (Proven to work second)
+      # ------------------------------------------------------------------
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: ${{ env.WEBEXTENSION_DIR }}/package-lock.json
+          node-version: "20" # Hardcoded
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml # Hardcoded path to root lock file
 
-      - name: Install System Dependencies
-
-        run: sudo apt-get update && sudo apt-get install -y gjs
-
+      # ------------------------------------------------------------------
+      # 3. Build Steps (pnpm is now guaranteed to be on the PATH)
+      # ------------------------------------------------------------------
       - name: Install Node Dependencies
-        run: npm ci
-        working-directory: ${{ env.WEBEXTENSION_DIR }}
+        run: pnpm install --frozen-lockfile
 
       - name: Run Build and Pack Scripts
-        run: npm run pack
-        working-directory: ${{ env.WEBEXTENSION_DIR }}
+        run: pnpm run pack
 
+      # ------------------------------------------------------------------
+      # Release and Upload Steps (Hardcoded File Paths)
+      # ------------------------------------------------------------------
       - name: Create GitHub Release
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.TAG_VERSION }}
-          name: Release ${{ env.TAG_VERSION }}
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
-
           files: |
-            ${{ env.WEBEXTENSION_DIR }}/gsconnect-chrome.zip
-            ${{ env.WEBEXTENSION_DIR }}/gsconnect-firefox.zip
+            # Hardcoded file names at the root 
+            ywlhe-chrome.zip
+            ywlhe-firefox.zip
 
-      - name: Create CRX file
+      - name: Create CRX file (Chrome Web Store)
         id: create_crx
         uses: cardinalby/webext-buildtools-chrome-crx-action@v2
         with:
-          zipFilePath: ${{ env.WEBEXTENSION_DIR }}/gsconnect-chrome.zip
-          crxFilePath: gsconnect-chrome-${{ env.TAG_VERSION }}.crx
+          zipFilePath: ywlhe-chrome.zip
+          crxFilePath: ywlhe-chrome-${{ github.ref_name }}.crx
           privateKey: ${{ secrets.CRX_PRIVATE_KEY }}
 
       - name: Upload CRX Asset
         uses: softprops/action-gh-release@v2
         with:
-          files: gsconnect-chrome-${{ env.TAG_VERSION }}.crx
+          files: ywlhe-chrome-${{ github.ref_name }}.crx
           overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
