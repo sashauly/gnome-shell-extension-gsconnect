@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      WEBEXTENSION_DIR: gnome-shell-extension-gsconnect/webextension
+      WEBEXTENSION_DIR: ./webextension
 
     outputs:
       webextension_dir: ${{ env.WEBEXTENSION_DIR }}
