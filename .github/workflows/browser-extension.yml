@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  release:
+  build_assets:
     runs-on: ubuntu-latest
 
     env:
