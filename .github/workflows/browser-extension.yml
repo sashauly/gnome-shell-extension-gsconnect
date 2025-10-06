@@ -8,11 +8,13 @@ jobs:
   build_assets:
     runs-on: ubuntu-latest
 
-    # Define outputs for the paths needed by subsequent jobs
+    env:
+      WEBEXTENSION_DIR: ../webextension
+
     outputs:
-      webextension_dir: ./webextension
-      dist_chrome_dir: ./webextension/dist-chrome
-      dist_firefox_dir: ./webextension/dist-firefox
+      webextension_dir: ${{ env.WEBEXTENSION_DIR }}
+      dist_chrome_dir: ${{ env.WEBEXTENSION_DIR }}/dist-chrome
+      dist_firefox_dir: ${{ env.WEBEXTENSION_DIR }}/dist-firefox
 
     steps:
       - name: Checkout repository
@@ -25,16 +27,11 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-        working-directory: ${{ outputs.webextension_dir }}
+        working-directory: ${{ env.WEBEXTENSION_DIR }}
 
       - name: Run Build Scripts (pack)
-        # This will run 'i18n', 'build:all', and 'zip:all', creating:
-        # 1. dist-chrome/ (unpacked extension)
-        # 2. dist-firefox/ (unpacked extension)
-        # 3. gsconnect-chrome.zip (in /webextension)
-        # 4. gsconnect-firefox.zip (in /webextension)
         run: npm run pack
-        working-directory: ${{ outputs.webextension_dir }}
+        working-directory: ${{ env.WEBEXTENSION_DIR }}
 
       # Upload the pre-created ZIPs as assets
       - name: Upload Chrome ZIP Asset
@@ -43,7 +40,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ${{ outputs.webextension_dir }}/gsconnect-chrome.zip
+          asset_path: ${{ env.WEBEXTENSION_DIR }}/gsconnect-chrome.zip
           asset_name: gsconnect-chrome-${{ github.event.release.tag_name }}.zip
           asset_content_type: application/zip
 
@@ -53,7 +50,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ${{ outputs.webextension_dir }}/gsconnect-firefox.zip
+          asset_path: ${{ env.WEBEXTENSION_DIR }}/gsconnect-firefox.zip
           asset_name: gsconnect-firefox-${{ github.event.release.tag_name }}.zip
           asset_content_type: application/zip
 
@@ -69,14 +66,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Create CRX file
-        # This action packs the unpacked extension directory into the CRX format,
-        # which requires signing via a private key.
         uses: cardinalby/webext-buildtools-chrome-crx-action@v2
         with:
-          # Use the directory containing the unpacked Chrome extension built by 'build_assets'
           extensionDir: ${{ needs.build_assets.outputs.dist_chrome_dir }}
           crxFilePath: gsconnect-chrome.crx
-          # CRX v3 requires a private key for signing, even for local distribution.
           privateKey: ${{ secrets.CRX_PRIVATE_KEY }}
 
       - name: Upload CRX Asset
@@ -101,14 +94,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Create XPI file
-        # This action uses the web-ext tool to package the unpacked extension
-        # directory into the XPI format without signing (since we removed the store steps).
         uses: kewisch/action-web-ext@v1
         with:
           cmd: build
-          # Use the directory containing the unpacked Firefox extension built by 'build_assets'
           source: ${{ needs.build_assets.outputs.dist_firefox_dir }}
-          artifacts: ./xpi-output # Output directory for the XPI file
+          artifacts: ./xpi-output
 
       - name: Upload XPI Asset
         uses: actions/upload-release-asset@v1
@@ -116,7 +106,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          # The web-ext tool names the file automatically (e.g., extension_name-version.xpi)
           asset_path: ./xpi-output/*.xpi
           asset_name: gsconnect-firefox-${{ github.event.release.tag_name }}.xpi
           asset_content_type: application/x-xpinstall
