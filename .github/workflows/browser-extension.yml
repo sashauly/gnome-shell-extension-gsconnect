@@ -1,21 +1,22 @@
-name: Release Browser Extension
-
 on:
   push:
+    # Sequence of patterns matched against refs/tags
     tags:
-      - "v*"
-  workflow_dispatch:
+      - "v*" # Push events to matching v*, i.e. v1.0, v20.15.10
+
+name: Upload Release Asset
 
 jobs:
-  build_assets:
+  build:
+    name: Upload Release Asset
     runs-on: ubuntu-latest
 
     env:
       WEBEXTENSION_DIR: ./webextension
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v2
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -32,7 +33,7 @@ jobs:
         run: npm run pack
         working-directory: ${{ env.WEBEXTENSION_DIR }}
 
-      - name: Create GitHub Release
+      - name: Create Release
         id: create_release
         uses: actions/create-release@v1
         env:
@@ -42,45 +43,32 @@ jobs:
           release_name: Release ${{ github.ref }}
           draft: false
           prerelease: false
-
-      # Upload the pre-created ZIPs as assets
       - name: Upload Chrome ZIP Asset
+        id: upload-chrome-zip-asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ github.event.release.upload_url }}
+          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
           asset_path: ${{ env.WEBEXTENSION_DIR }}/gsconnect-chrome.zip
           asset_name: gsconnect-chrome-${{ github.event.release.tag_name }}.zip
           asset_content_type: application/zip
 
       - name: Upload Firefox ZIP Asset
+        id: upload-firefox-zip-asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ github.event.release.upload_url }}
+          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
           asset_path: ${{ env.WEBEXTENSION_DIR }}/gsconnect-firefox.zip
           asset_name: gsconnect-firefox-${{ github.event.release.tag_name }}.zip
           asset_content_type: application/zip
 
-  # ----------------------------------------------------------------------
-  # JOB 2: Create and Upload CRX (Chrome)
-  # ----------------------------------------------------------------------
-  create_crx:
-    needs: build_assets
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Create CRX file
         uses: cardinalby/webext-buildtools-chrome-crx-action@v2
         with:
-          extensionDir: ${{ needs.build_assets.outputs.dist_chrome_dir }}
+          zipFilePath: ${{ steps.upload-chrome-zip-asset.outputs.asset_path }}
           crxFilePath: gsconnect-chrome.crx
           privateKey: ${{ secrets.CRX_PRIVATE_KEY }}
 
@@ -89,37 +77,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ github.event.release.upload_url }}
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: gsconnect-chrome.crx
           asset_name: gsconnect-chrome-${{ github.event.release.tag_name }}.crx
           asset_content_type: application/x-chrome-extension
 
-  # ----------------------------------------------------------------------
-  # JOB 3: Create and Upload XPI (Firefox)
-  # ----------------------------------------------------------------------
-  create_xpi:
-    needs: build_assets
-    runs-on: ubuntu-latest
+      # - name: Create XPI file
+      #   uses: kewisch/action-web-ext@v1
+      #   with:
+      #     cmd: build
+      #     source: ${ env.WEBEXTENSION_DIR }
+      #     artifacts: ./xpi-output
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Create XPI file
-        uses: kewisch/action-web-ext@v1
-        with:
-          cmd: build
-          source: ${{ needs.build_assets.outputs.dist_firefox_dir }}
-          artifacts: ./xpi-output
-
-      - name: Upload XPI Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./xpi-output/*.xpi
-          asset_name: gsconnect-firefox-${{ github.event.release.tag_name }}.xpi
-          asset_content_type: application/x-xpinstall
+      # - name: Upload XPI Asset
+      #   uses: actions/upload-release-asset@v1
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     upload_url: ${{ steps.create_release.outputs.upload_url }}
+      #     asset_path: ./xpi-output/*.xpi
+      #     asset_name: gsconnect-firefox-${{ github.event.release.tag_name }}.xpi
+      #     asset_content_type: application/x-xpinstall
