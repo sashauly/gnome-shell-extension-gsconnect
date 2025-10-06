@@ -30,3 +30,7 @@ firefox
 # Config files
 .webextrc
 .webextrc.*
+
+# packed extension
+*.crx
+*.pem
