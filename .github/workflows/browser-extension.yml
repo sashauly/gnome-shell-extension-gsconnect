@@ -46,14 +46,13 @@ jobs:
 
       - name: Create GitHub Release
         id: create_release
-        uses: softprops/action-gh-release@v2 # Use a modern release action
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref }}
+          # IMPORTANT: Use the clean tag name from the environment variable
+          tag_name: ${{ env.TAG_VERSION }}
           name: Release ${{ env.TAG_VERSION }}
           draft: false
           prerelease: false
-          token: ${{ secrets.GITHUB_TOKEN }} # Explicitly pass the token
-          # The softprops action can upload all assets in one step!
           files: |
             ${{ env.WEBEXTENSION_DIR }}/gsconnect-chrome.zip
             ${{ env.WEBEXTENSION_DIR }}/gsconnect-firefox.zip
