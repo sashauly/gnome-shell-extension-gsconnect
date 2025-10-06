@@ -5,53 +5,78 @@ on:
     types: [published]
   workflow_dispatch:
 
+# --- SECURITY: Enforce Least Privilege for GITHUB_TOKEN ---
+permissions:
+  contents: write # Allows uploading release assets
+  pull-requests: read # Good default, but set to 'none' if not needed
+  # Other permissions (e.g., checks, deployments) are automatically set to 'none'
+
 jobs:
   build_assets:
     runs-on: ubuntu-latest
 
+    # --- OPTIMIZATION: Define key directories/files as env variables and outputs ---
     env:
       WEBEXTENSION_DIR: ./webextension
 
     outputs:
-      webextension_dir: ${{ env.WEBEXTENSION_DIR }}
+      # Outputs are used by downstream jobs to fetch the artifacts
+      chrome_zip: ${{ env.WEBEXTENSION_DIR }}/gsconnect-chrome.zip
+      firefox_zip: ${{ env.WEBEXTENSION_DIR }}/gsconnect-firefox.zip
       dist_chrome_dir: ${{ env.WEBEXTENSION_DIR }}/dist-chrome
       dist_firefox_dir: ${{ env.WEBEXTENSION_DIR }}/dist-firefox
 
     steps:
+      # --- SECURITY: Pin actions to full SHA ---
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a39cd86300 # actions/checkout@v4
 
+      # --- SECURITY: Pin actions to full SHA ---
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8 # actions/setup-node@v4
         with:
           node-version: "20"
 
+      - name: Install GJS (GNOME JavaScript)
+        run: sudo apt update && sudo apt install -y gjs
+
       - name: Install dependencies
-        run: npm install
+        run: npm ci # Use 'npm ci' for clean, consistent installs in CI
         working-directory: ${{ env.WEBEXTENSION_DIR }}
 
       - name: Run Build Scripts (pack)
         run: npm run pack
         working-directory: ${{ env.WEBEXTENSION_DIR }}
 
-      # Upload the pre-created ZIPs as assets
+      # --- OPTIMIZATION: Upload artifacts for downstream jobs ---
+      - name: Archive Chrome & Firefox Artifacts
+        uses: actions/upload-artifact@509a566580579e0a811d8d38890d79d853e4c414 # actions/upload-artifact@v4
+        with:
+          name: webextension-build-artifacts
+          path: |
+            ${{ steps.build_assets.outputs.dist_chrome_dir }}
+            ${{ steps.build_assets.outputs.dist_firefox_dir }}
+            ${{ steps.build_assets.outputs.chrome_zip }}
+            ${{ steps.build_assets.outputs.firefox_zip }}
+
+      # Upload the pre-created ZIPs as release assets (This uses files created in this job, so it's fine)
       - name: Upload Chrome ZIP Asset
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-release-asset@e87f3b8908323ff38289452b45e7f185d21539e0 # actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ${{ env.WEBEXTENSION_DIR }}/gsconnect-chrome.zip
+          asset_path: ${{ steps.build_assets.outputs.chrome_zip }}
           asset_name: gsconnect-chrome-${{ github.event.release.tag_name }}.zip
           asset_content_type: application/zip
 
       - name: Upload Firefox ZIP Asset
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-release-asset@e87f3b8908323ff38289452b45e7f185d21539e0 # actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ${{ env.WEBEXTENSION_DIR }}/gsconnect-firefox.zip
+          asset_path: ${{ steps.build_assets.outputs.firefox_zip }}
           asset_name: gsconnect-firefox-${{ github.event.release.tag_name }}.zip
           asset_content_type: application/zip
 
@@ -63,20 +88,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      # --- OPTIMIZATION: Download artifacts instead of running checkout again ---
+      - name: Download webextension-build-artifacts
+        uses: actions/download-artifact@6e69450a116b3f7188734914d9b9d19a16f849ff # actions/download-artifact@v4
         with:
-          fetch-depth: 0
+          name: webextension-build-artifacts
+          path: .
 
+      # --- SECURITY: Pin actions to full SHA (Requires manual review of the action code) ---
       - name: Create CRX file
-        uses: cardinalby/webext-buildtools-chrome-crx-action@v2
+        uses: cardinalby/webext-buildtools-chrome-crx-action@200e717e132043621437190e21a8d05dd3a7894a # cardinalby/webext-buildtools-chrome-crx-action@v2
         with:
           extensionDir: ${{ needs.build_assets.outputs.dist_chrome_dir }}
           crxFilePath: gsconnect-chrome.crx
+          # --- SECURITY: Passing a sensitive secret to a community action ---
           privateKey: ${{ secrets.CRX_PRIVATE_KEY }}
 
       - name: Upload CRX Asset
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-release-asset@e87f3b8908323ff38289452b45e7f185d21539e0 # actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -93,20 +122,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      # --- OPTIMIZATION: Download artifacts instead of running checkout again ---
+      - name: Download webextension-build-artifacts
+        uses: actions/download-artifact@6e69450a116b3f7188734914d9b9d19a16f849ff # actions/download-artifact@v4
         with:
-          fetch-depth: 0
+          name: webextension-build-artifacts
+          path: .
 
+      # --- SECURITY: Pin actions to full SHA (Requires manual review of the action code) ---
       - name: Create XPI file
-        uses: kewisch/action-web-ext@v1
+        uses: kewisch/action-web-ext@e7e17088992c64b630e281b3724c9c1488c9d924 # kewisch/action-web-ext@v1
         with:
           cmd: build
           source: ${{ needs.build_assets.outputs.dist_firefox_dir }}
           artifacts: ./xpi-output
 
       - name: Upload XPI Asset
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-release-asset@e87f3b8908323ff38289452b45e7f185d21539e0 # actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
