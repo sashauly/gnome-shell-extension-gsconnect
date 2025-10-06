@@ -28,6 +28,7 @@ jobs:
         with:
           node-version: "20"
           cache: "npm" # Add caching for dependencies (efficiency boost)
+          cache-dependency-path: ${{ env.WEBEXTENSION_DIR }}/package-lock.json
 
       - name: Install System Dependencies
         # Combine commands and use recommended apt options for speed
