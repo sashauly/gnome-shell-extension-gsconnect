@@ -1,21 +1,17 @@
-name: Build and Package WebExtension Assets
+name: Release Browser Extension
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
 
 jobs:
-  build_assets:
+  release:
     runs-on: ubuntu-latest
 
     env:
       WEBEXTENSION_DIR: ./webextension
-
-    outputs:
-      webextension_dir: ${{ env.WEBEXTENSION_DIR }}
-      dist_chrome_dir: ${{ env.WEBEXTENSION_DIR }}/dist-chrome
-      dist_firefox_dir: ${{ env.WEBEXTENSION_DIR }}/dist-firefox
 
     steps:
       - name: Checkout repository
@@ -25,7 +21,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-
       - name: Install GJS (GNOME JavaScript)
         run: sudo apt update && sudo apt install -y gjs
 
@@ -36,6 +31,17 @@ jobs:
       - name: Run Build Scripts (pack)
         run: npm run pack
         working-directory: ${{ env.WEBEXTENSION_DIR }}
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
 
       # Upload the pre-created ZIPs as assets
       - name: Upload Chrome ZIP Asset
